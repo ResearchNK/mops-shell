@@ -2,22 +2,35 @@
 
 ## Introduction
 
-mops-shell is a shell scripting approach with ruby based DSL (extensible),
-support for bash-like syntax, error checking (exceptions) and remote executions
-(with DRY principle in mind). You can also (finally) actually write tests for
-your "bash" scripts. It may be thought as a powerfull way of running system
-commands on both local and remote machines.
+mops-shell is a layer between ruby and system shell (like bash for example). It
+may be thought as a powerfull way of running system commands on both local and
+remote machines.
+
+Main features:
+
+* ruby based DSL - so it's easy to extend
+* support for bash-like syntax
+* error checking - you can catch exceptions on a command failure, instead of
+checking the exit status at each line
+* [DRY](http://en.wikipedia.org/wiki/Don%27t_repeat_yourself) principle in mind -
+you write your script once and run it against different shells
+* both local and remote executions
+* testable - you can actually write real unit tests for your bash-like scripts
 
 ## Installation
 
 Install the dependencies:
 
-    $ sudo gem install net-ssh
-    $ sudo gem install iron-extensions
+``` bash
+$ sudo gem install net-ssh
+$ sudo gem install iron-extensions
+```
 
 Checkout the project using git, enter it and build the gem.
 
-    $ gem build mops-shell.gemspec
+``` bash
+$ gem build mops-shell.gemspec
+```
 
 Then install it using `gem install`.
 
@@ -31,13 +44,15 @@ probably).
 
 Let's start from a classic "Hello world!" example:
 
-    require 'mops/shell/bash'
+``` ruby
+require 'mops/shell/bash'
 
-    shell = BashShell.new
+shell = BashShell.new
 
-    shell.script do
-        R echo "Hello world!"
-    end
+shell.script do
+    R echo "Hello world!"
+end
+```
 
 So, what's going on here and why not just write simple `puts`?
 
@@ -45,18 +60,22 @@ First of all, the script actually fires up a system `echo` command with `"Hello
 world!"` as an argument. But it is still ruby code, so to be more precise, what
 we actually do is:
 
-    shell.script do
-        R(echo("Hello world!"))
-    end
+``` ruby
+shell.script do
+    R(echo("Hello world!"))
+end
+```
 
 but we can avoid the parentheses thanks to ruby's right-most evaluation
 convention. From this, you might guess, that `R` is a function that provokes the
 actual command execution, so we might as well write:
 
-    shell.script do
-        command = echo "Hello world!"
-        R command
-    end
+``` ruby
+shell.script do
+    command = echo "Hello world!"
+    R command
+end
+```
 
 Why not fire up the command implicitly when created? Two main reasons:
 
@@ -66,13 +85,15 @@ Why not fire up the command implicitly when created? Two main reasons:
 As you may argue with the first bullet point, the second has a lot more of power.
 Consider another example:
 
-    contents = nil
+``` ruby
+contents = nil
 
-    shell.script do
-        contents = C cat 'some_file'
-    end
+shell.script do
+    contents = C cat 'some_file'
+end
 
-    puts contents
+puts contents
+```
 
 This should be self-explaining, the `C` function does not simply run command,
 but also returns it's output as a ruby string. You can already see the power of
@@ -97,13 +118,15 @@ to trace the problem if it occurs. This actually was the primary reason to
 "reimplement" bash with `mops-shell`**, so to say. Nevertheless, we've got some
 more options. We can catch the exception:
 
-    shell.script do
-        begin
-            contents = C cat 'some_file'
-        rescue CommandError
-            STDERR.puts 'Error while executing cat'
-        end
+``` ruby
+shell.script do
+    begin
+        contents = C cat 'some_file'
+    rescue CommandError
+        STDERR.puts 'Error while executing cat'
     end
+end
+```
 
 Poor cat! We can check the file existence in the first place. Notice the
 `file_exists?` method available. Check out some other helpful stuff in
@@ -112,40 +135,46 @@ of struggling with bash nasty [file
 tests](http://tldp.org/LDP/abs/html/fto.html), but you can easily write your own
 extensions.
 
-    shell.script do
+``` ruby
+shell.script do
 
-        if file_exists?('some_file')
-            contents = C cat 'some_file'
-        else
-            puts "File does not exist"
-        end
+    if file_exists?('some_file')
+        contents = C cat 'some_file'
+    else
+        puts "File does not exist"
     end
+end
+```
 
 The last thing is to avoid automatic error checking and test the exit status by
 yourself. Again notice, we're not using the `C` method anymore, instead we're
 using another execution method, `C!`:
 
-    shell.script do
-        contents, statuses = C! cat 'some_file'
-        puts "Command exit status was: #{ statuses[0].exitstatus }"
-    end
+``` ruby
+shell.script do
+    contents, statuses = C! cat 'some_file'
+    puts "Command exit status was: #{ statuses[0].exitstatus }"
+end
+```
 
 Two questions might appear here. First of all, why multiple statuses are
 returned, and why they are more complex structures than simple integers? The
 first issue will become easier to grasp with a simple example of pipelining:
 
-    shell.script do
+``` ruby
+shell.script do
 
-        statuses = R! pipeline [
-            (echo "\"one\ntwo\""),
-            (awk "'/two/ { print $0 } END { exit 1 }'"),
-            cat
-        ]
+    statuses = R! pipeline [
+        (echo "\"one\ntwo\""),
+        (awk "'/two/ { print $0 } END { exit 1 }'"),
+        cat
+    ]
 
-        statuses.each_with_index do |s, i|
-            puts "#{ i } - exit status: #{ s.exitstatus }"
-        end
+    statuses.each_with_index do |s, i|
+        puts "#{ i } - exit status: #{ s.exitstatus }"
     end
+end
+```
 
 When run, you will see an output similar to the one below:
 
@@ -161,27 +190,35 @@ Also, it is up to you to escape white-spaced arguments (I find any default
 behaviour very misleading here) and any special characters used by the external
 commands. Try to figure out, why this:
 
-    shell.script do
-        R echo "$SHELL"
-    end
+``` ruby
+shell.script do
+    R echo "$SHELL"
+end
+```
 
 this:
 
-    shell.script do
-        R echo '$SHELL'
-    end
+``` ruby
+shell.script do
+    R echo '$SHELL'
+end
+```
 
 and this:
 
-    shell.script do
-        R echo '"$SHELL"'
-    end
+``` ruby
+shell.script do
+    R echo '"$SHELL"'
+end
+```
 
 will result in echoing expanded value (`/bin/bash` for example), and this:
 
-    shell.script do
-        R echo "'$SHELL'"
-    end
+``` ruby
+shell.script do
+    R echo "'$SHELL'"
+end
+```
 
 will print `$SHELL` literally. Once you catch where the ruby declarations and
 substitutions end and the shell expansions start, the "magic" will become a
@@ -209,26 +246,32 @@ Moreover, the only response guaranteed is `#exitstatus`. Others are optional.
 To provide something to the standard input of the command, and then capture it's
 output, you could write something like this:
 
-    shell.script do
-        result = C pipeline [
-            (echo "2+2"),
-            bc
-        ]
-    end
+``` ruby
+shell.script do
+    result = C pipeline [
+        (echo "2+2"),
+        bc
+    ]
+end
+```
 
 There is also a shortcut for this:
 
-    shell.script do
-        result = Ci "2+2\n", bc
-    end
+``` ruby
+shell.script do
+    result = Ci "2+2\n", bc
+end
+```
 
 There are also more advanced options, read about redirections.
 
 ### Redirections
 
-    shell.script do
-        R (echo 'some text') > 'some_file'
-    end
+``` ruby
+shell.script do
+    R (echo 'some text') > 'some_file'
+end
+```
 
 Why the parentheses? The evaluation is as follows:
 
@@ -242,18 +285,22 @@ Why the parentheses? The evaluation is as follows:
 
 To append to a file, use:
 
-    shell.script do
-        R (echo 'some text') >> 'some_file'
-    end
+``` ruby
+shell.script do
+    R (echo 'some text') >> 'some_file'
+end
+```
 
 The `>` and `>>` methods are just sugars for calling a `redirect!` method (see
 {AbstractCommand}):
 
-    f = File.new('yet_another_file', 'w')
+``` ruby
+f = File.new('yet_another_file', 'w')
 
-    shell.script do
-        R (echo "some text").redirect!(f, 1)
-    end
+shell.script do
+    R (echo "some text").redirect!(f, 1)
+end
+```
 
 The first argument can be either an IO or a String object, the second argument
 indicates, which descriptor to redirect (0 is for stdin, 1 for stdout and 2 for
@@ -264,22 +311,28 @@ trying to run the built command.
 You can also set stdin, stdout and stderr directly, using `#stdin!`, `#stdout!`
 and `#stderr!` methods, for example:
 
-    shell.script do
-        R! (cat "some_non_existing_file").stderr!(STDOUT)
-    end
+``` ruby
+shell.script do
+    R! (cat "some_non_existing_file").stderr!(STDOUT)
+end
+```
 
 Is quite equivalent to bash:
 
-    cat some_non_existing_file 2>&1
+``` bash
+cat some_non_existing_file 2>&1
+```
 
 Notice the exclamation mark next to `R`, which prevents the command runner
 from raising an error and just returns status, which will be 1 in this case.
 
 You can also set stdin:
 
-    shell.script do
-        R cat < 'some_file'
-    end
+``` ruby
+shell.script do
+    R cat < 'some_file'
+end
+```
 
 Of course not every combination of IO objects and examples showed here makes
 sense. For example, you could set an output to a file opened in read only mode.
@@ -290,11 +343,13 @@ usages in which the final behavior may be undefined.
 
 Some commands make use of blocks. Consider this example:
 
-    shell.script do
-        each_line_from_file('some_file') do |line|
-            puts line
-        end
+``` ruby
+shell.script do
+    each_line_from_file('some_file') do |line|
+        puts line
     end
+end
+```
 
 Of course, this is not a simple wrapper on ruby `File#each`, because it would be
 pointless to use mops-shell, when this would be applicable. Instead, imagine
@@ -310,13 +365,15 @@ approach (ruby is not suitable for processing large files line-by-line anyway).
 Why should we use `echo` anyway? And why not use ruby's
 `File.exist?(file_name)`? Well, get this, you can actually write:
 
-    require 'mops/shell/bash/bash_remote_shell'
+``` ruby
+require 'mops/shell/bash/bash_remote_shell'
 
-    shell = BashRemoteShell.new('host', 'user')
+shell = BashRemoteShell.new('host', 'user')
 
-    shell.script do
-        # no need to change scripts here
-    end
+shell.script do
+    # no need to change scripts here
+end
+```
 
 So you can write any script in a closure and inject a shell. It doesn't have to
 be local (I put some effort to implement {SSHCommandRunnerModule}). The ruby
@@ -331,18 +388,22 @@ didn't want to generate the commands on demand. I find programming by
 command `yes` visible to a bash shell session, register it with
 {UnixShellModule}:
 
-    UnixShellModule.register_shell_command(:yes)
+``` ruby
+UnixShellModule.register_shell_command(:yes)
+```
 
 This requires `yes` to be at least available on system `$PATH`. You can also
 provide an arbitrary path instead of a symbol, but probably quoted, if it
 contains whitespaces. For those, who really like going custom, here is the
 source of that method.
 
-    def register_shell_command(command_sym)
-        define_method command_sym do |*args, &block|
-            ShellCommand.new(command_sym, *args, &block)
-        end
+``` ruby
+def register_shell_command(command_sym)
+    define_method command_sym do |*args, &block|
+        ShellCommand.new(command_sym, *args, &block)
     end
+end
+```
 
 As you can see, every time you call a command method, a new object is created,
 with command arguments stored. You can also create shell commands more locally
@@ -362,24 +423,26 @@ Here I'm proposing one solution to this issue, but I'm also RFC.
 
 Let's look at a simple example:
 
-    class A
-        attr_reader :shell
+``` ruby
+class A
+    attr_reader :shell
 
-        def initialize(shell)
-            @shell = shell
-        end
+    def initialize(shell)
+        @shell = shell
+    end
 
-        def foo(some_condition)
+    def foo(some_condition)
 
-            shell.script do
-                R echo 'Running a script...'
+        shell.script do
+            R echo 'Running a script...'
 
-                if some_condition
-                    R echo 'The condition was true!'
-                end
+            if some_condition
+                R echo 'The condition was true!'
             end
         end
     end
+end
+```
 
 First of all: always allow to inject shells. If you don't want to pass them as
 parameters to the instance method, make them an instance variables, but always
@@ -387,51 +450,53 @@ be able to easily use their mocked version to put expectations on in some way.
 
 Now, let's write some spec for this class
 
-    require 'spec_helper'
-    require 'mops/shell/fake_shell'
-    require 'a'
+``` ruby
+require 'spec_helper'
+require 'mops/shell/fake_shell'
+require 'a'
 
-    describe A do
+describe A do
 
-        context "the condition is true" do
+    context "the condition is true" do
 
-            it "runs echo confirming the condition is true" do
-                shell = FakeShell.new
-                command1 = double('command1')
-                command2 = double('command2')
+        it "runs echo confirming the condition is true" do
+            shell = FakeShell.new
+            command1 = double('command1')
+            command2 = double('command2')
 
-                # we have to stub all echos because of the way rspec works
-                shell.should_receive(:echo).
-                    with('Running a script...').
-                    and_return(command1)
+            # we have to stub all echos because of the way rspec works
+            shell.should_receive(:echo).
+                with('Running a script...').
+                and_return(command1)
 
-                # expect an echo command to be created with a specific argument
-                shell.should_receive(:echo).
-                    with('The condition was true!').
-                    and_return(command2) 
+            # expect an echo command to be created with a specific argument
+            shell.should_receive(:echo).
+                with('The condition was true!').
+                and_return(command2) 
 
-                # expect the above commands to be run by the R method in an
-                # order
-                shell.should_receive(:R).with(command1).ordered
-                shell.should_receive(:R).with(command2).ordered
+            # expect the above commands to be run by the R method in an
+            # order
+            shell.should_receive(:R).with(command1).ordered
+            shell.should_receive(:R).with(command2).ordered
 
-                described_class.new(shell).foo(true)
-            end 
-        end
-
-        context "the condition is false" do
-
-            it "does not run echo about the condition" do
-                shell = FakeShell.new
-
-                # no need for stubbing other echos because of the inverted
-                # logic. All we have to do is to put a constraint on the
-                # command's argument.
-                shell.should_not_receive(:echo).with('The condition was true!')
-                described_class.new(shell).foo(false)
-            end 
-        end
+            described_class.new(shell).foo(true)
+        end 
     end
+
+    context "the condition is false" do
+
+        it "does not run echo about the condition" do
+            shell = FakeShell.new
+
+            # no need for stubbing other echos because of the inverted
+            # logic. All we have to do is to put a constraint on the
+            # command's argument.
+            shell.should_not_receive(:echo).with('The condition was true!')
+            described_class.new(shell).foo(false)
+        end 
+    end
+end
+```
 
 Notice the {FakeShell} usage and how we put expectations on the flow. Also the
 famous Hitler's "from now on, I want every line of code to have 10 lines of code
